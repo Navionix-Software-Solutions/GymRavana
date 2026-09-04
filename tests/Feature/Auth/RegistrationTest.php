@@ -1,0 +1,59 @@
+<?php
+
+namespace Tests\Feature\Auth;
+
+use App\Models\MembershipTier;
+use App\Models\MembershipSubscription;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class RegistrationTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_registration_screen_can_be_rendered(): void
+    {
+        $response = $this->get('/register');
+
+        $response->assertStatus(200);
+    }
+
+    public function test_new_users_can_register(): void
+    {
+        $this->seed();
+        $tier = MembershipTier::first();
+
+        $response = $this->post('/register', [
+            'name' => 'Test User',
+            'email' => 'test@example.com',
+            'application_type' => 'member',
+            'membership_tier_id' => $tier->id,
+            'password' => 'password',
+            'password_confirmation' => 'password',
+        ]);
+
+        $this->assertAuthenticated();
+        $this->assertTrue(auth()->user()->hasRole('member'));
+        $subscription = MembershipSubscription::where('user_id', auth()->id())->firstOrFail();
+        $response->assertRedirect(route('member.membership.checkout', $subscription, absolute: false));
+    }
+
+    public function test_public_registration_cannot_assign_a_privileged_role(): void
+    {
+        $this->seed();
+        $tier = MembershipTier::first();
+
+        $this->post('/register', [
+            'name' => 'Untrusted User',
+            'email' => 'untrusted@example.com',
+            'role' => 'trainer',
+            'application_type' => 'member',
+            'membership_tier_id' => $tier->id,
+            'password' => 'password',
+            'password_confirmation' => 'password',
+        ]);
+
+        $this->assertTrue(auth()->user()->hasRole('member'));
+        $this->assertFalse(auth()->user()->hasRole('trainer'));
+    }
+}
